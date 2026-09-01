@@ -255,8 +255,9 @@ temporary CV and delete only that record.
   shown by the client.
 - `invalid_token`: compare issuer including trailing slash, `/mcp` audience, clock, JWT algorithm,
   allowed subject, revocation cutoff, and Auth0 JWKS URL.
-- `insufficient_scope`: assign the permission to the correct Auth0 role/API, reconnect so a new
-  access token is minted, and retry.
+- `insufficient_scope`: verify the ChatGPT/Hermes user-delegated client grant contains the scope for
+  the correct API. If RBAC is enabled on a paid tenant, also verify the owner's role assignment.
+  Reconnect so a new access token is minted, and retry.
 - Desktop works but mobile does not: confirm mobile uses the same ChatGPT account and the registered
   hosted connection, not a local `.mcp.json` server or Secure MCP Tunnel.
 - Existing CVs appear missing: stop. Check that Coolify reused the original PostgreSQL volume and
