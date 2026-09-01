@@ -12,10 +12,12 @@ describe("server configuration", () => {
       .toBe(path.resolve("examples/sample-cv.md"));
   });
 
-  it("requires a strong access token in production", () => {
+  it("requires an access token with at least six characters in production", () => {
     expect(() => loadConfig({ NODE_ENV: "production" }))
       .toThrow("CV_BUILDER_API_TOKEN is required in production");
-    expect(() => loadConfig({ NODE_ENV: "production", CV_BUILDER_API_TOKEN: "too-short" }))
-      .toThrow("CV_BUILDER_API_TOKEN must contain at least 32 characters");
+    expect(() => loadConfig({ NODE_ENV: "production", CV_BUILDER_API_TOKEN: "short" }))
+      .toThrow("CV_BUILDER_API_TOKEN must contain at least 6 characters");
+    expect(loadConfig({ NODE_ENV: "production", CV_BUILDER_API_TOKEN: "sixsix" }).apiToken)
+      .toBe("sixsix");
   });
 });

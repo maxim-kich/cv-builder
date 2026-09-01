@@ -1,5 +1,7 @@
 import { resolve } from "node:path";
 
+const MIN_API_TOKEN_LENGTH = 6;
+
 export interface AppConfig {
   host: string;
   port: number;
@@ -27,8 +29,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   if (isProduction && !apiToken) {
     throw new Error("CV_BUILDER_API_TOKEN is required in production");
   }
-  if (apiToken && apiToken.length < 32) {
-    throw new Error("CV_BUILDER_API_TOKEN must contain at least 32 characters");
+  if (apiToken && apiToken.length < MIN_API_TOKEN_LENGTH) {
+    throw new Error(`CV_BUILDER_API_TOKEN must contain at least ${MIN_API_TOKEN_LENGTH} characters`);
   }
 
   return {

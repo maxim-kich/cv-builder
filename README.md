@@ -198,7 +198,7 @@ The complete machine-readable operation list is at `/api/v1/openapi.json`.
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `CV_BUILDER_API_TOKEN` | unset | Protects the UI session, REST API, and MCP endpoint. Required for remote use. |
+| `CV_BUILDER_API_TOKEN` | unset | Protects the UI session, REST API, and MCP endpoint. Required for remote use; minimum 6 characters. A long random token remains strongly recommended. |
 | `DATABASE_URL` | `sqlite:./data/cv-builder.sqlite` | SQLite path or PostgreSQL connection URL. |
 | `CV_BUILDER_PUBLIC_URL` | local server URL | Canonical HTTPS origin used in MCP download links. |
 | `CV_BUILDER_SEED_FILE` | unset | Optional initial Markdown document used only when the database is empty. |
