@@ -20,7 +20,7 @@ Use two Coolify resources created from the same repository:
 | Owner | Public URL / OAuth audience | Allowed OAuth subject | PostgreSQL volume |
 | --- | --- | --- | --- |
 | Maxim | `https://cv-builder.maximkich.com/mcp` | Maxim's exact Auth0 `user_id` / JWT `sub` | Maxim resource only |
-| Valeria | `https://cv-builder.shevchenko-tymchuk.com/mcp` | Valeria's exact Auth0 `user_id` / JWT `sub` | Valeria resource only |
+| Valeriia | `https://cv-builder.shevchenko-tymchuk.com/mcp` | Valeriia's exact Auth0 `user_id` / JWT `sub` | Valeriia resource only |
 
 Do not attach the resources to the same PostgreSQL service or volume. Give each resource a unique
 random `POSTGRES_PASSWORD` and `CV_BUILDER_API_TOKEN`. The static token remains available to the web
@@ -29,7 +29,7 @@ server-only Coolify variables and no MCP tool can read them.
 
 Every OAuth request is checked for a valid RS256 signature, exact issuer, exact audience, expiry,
 not-before time, allowed subject, local revocation state, and tool scope. Audience plus subject
-checks mean a Maxim token is rejected by Valeria's deployment even if both use one Auth0 tenant.
+checks mean a Maxim token is rejected by Valeriia's deployment even if both use one Auth0 tenant.
 
 ## 1. Back up before deployment
 
@@ -132,7 +132,7 @@ CV_BUILDER_OAUTH_ALGORITHMS=RS256
 CV_BUILDER_OAUTH_MAX_TOKEN_LIFETIME_SECONDS=300
 ```
 
-For Valeria, replace both URLs, the allowed subject, API token, and PostgreSQL password. Keep these
+For Valeriia, replace both URLs, the allowed subject, API token, and PostgreSQL password. Keep these
 empty unless operating an incident or the provider explicitly supports RFC 7662 introspection:
 
 ```env
@@ -186,7 +186,7 @@ or workspace policy; an admin may need to allow developer/private plugins.
 8. Open the same account on Desktop, iOS, and Android, enable the same private plugin/connection in
    a new chat, and rerun the set. A mobile request must still work when every Mac is shut down.
 
-Do not register Maxim's URL in Valeria's account or vice versa. If an owner has both connections,
+Do not register Maxim's URL in Valeriia's account or vice versa. If an owner has both connections,
 remove the wrong one rather than relying on display names.
 
 ## 5. Connect Hermes
@@ -215,11 +215,11 @@ and all six tools including PDF export. Human acceptance uses the package's prom
 | ChatGPT Desktop | Maxim | ☐ | ☐ | ☐ | ☐ | n/a | |
 | ChatGPT iOS | Maxim | ☐ | ☐ | ☐ | ☐ | ☐ | |
 | ChatGPT Android | Maxim | ☐ | ☐ | ☐ | ☐ | ☐ | |
-| ChatGPT web | Valeria | ☐ | ☐ | ☐ | ☐ | n/a | |
-| ChatGPT iOS/Android | Valeria | ☐ | ☐ | ☐ | ☐ | ☐ | |
+| ChatGPT web | Valeriia | ☐ | ☐ | ☐ | ☐ | n/a | |
+| ChatGPT iOS/Android | Valeriia | ☐ | ☐ | ☐ | ☐ | ☐ | |
 | Hermes | each owner | ☐ | ☐ | ☐ | ☐ | n/a | |
 
-Also test negative isolation: a Maxim token against Valeria's `/api/v1/cvs` and vice versa must
+Also test negative isolation: a Maxim token against Valeriia's `/api/v1/cvs` and vice versa must
 return `401 invalid_token`. Never use production CVs for destructive acceptance; create a named
 temporary CV and delete only that record.
 

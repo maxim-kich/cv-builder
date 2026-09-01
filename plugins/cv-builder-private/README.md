@@ -13,7 +13,7 @@ node scripts/configure-app.mjs \
   --owner Maxim
 ```
 
-Use Valeria's URL and owner name in her separate checkout/account. The script creates `.app.json`
+Use Valeriia's URL and owner name in her separate checkout/account. The script creates `.app.json`
 and points `.codex-plugin/plugin.json` at it. `.app.json` is intentionally git-ignored because it is
 an account-specific connection mapping. It contains no OAuth token or database credential.
 

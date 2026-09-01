@@ -112,7 +112,7 @@ The Compose stack limits the app to 512 MB RAM and PostgreSQL to 1 GB. Those are
 not expected steady usage. The Node and PostgreSQL images support both AMD64 and ARM64 hosts.
 
 The authentication and storage model is one private workspace per deployment. For Maxim and
-Valeria, deploy this repository twice with distinct domains, OAuth audiences/subjects, access
+Valeriia, deploy this repository twice with distinct domains, OAuth audiences/subjects, access
 tokens, PostgreSQL passwords, and stack volumes. Follow the linked backup, Auth0, installation,
 test, recovery, and rollback runbook before enabling mobile access.
 
