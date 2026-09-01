@@ -13,7 +13,10 @@ try {
     api: `${config.publicUrl}/api/v1`,
     mcp: `${config.publicUrl}/mcp`,
     storage: storage.kind,
-    authentication: config.apiToken ? "enabled" : "disabled",
+    authentication: {
+      oauth2: Boolean(config.oauth),
+      staticBearer: Boolean(config.apiToken),
+    },
   }, "CV Builder is ready");
 } catch (error) {
   app.log.error(error);

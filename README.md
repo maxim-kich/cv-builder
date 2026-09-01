@@ -17,6 +17,7 @@ stored by the server, so the browser UI and multiple AI agents work on the same 
 - Streamable HTTP MCP: `/mcp`
 - Health check: `/api/v1/health`
 - MCP tools: `list_cvs`, `get_cv`, `create_cv`, `update_cv`, `delete_cv`, and `export_cv`
+- OAuth protected-resource discovery: `/.well-known/oauth-protected-resource/mcp`
 
 PDFs are rendered on the server. `export_cv` returns an MCP PDF resource, while
 `GET /api/v1/cvs/{id}/pdf` returns a normal downloadable file.
@@ -84,13 +85,23 @@ proxy, domain routing, and HTTPS.
 1. Create a Coolify resource from this GitHub repository.
 2. Select the Docker Compose build pack, use `/` as the base directory, and set the Compose
    location to `/compose.coolify.yaml`.
-3. Add these runtime variables in Coolify:
+3. Add the runtime variables documented in
+   [`docs/mobile-plugin-deployment.md`](docs/mobile-plugin-deployment.md). The complete set for
+   ChatGPT mobile is:
 
    ```env
    CV_BUILDER_API_TOKEN=<output of: openssl rand -hex 32>
    POSTGRES_PASSWORD=<different output of: openssl rand -hex 32>
    CV_BUILDER_PUBLIC_URL=https://cv.example.com
+   CV_BUILDER_OAUTH_ISSUER=https://YOUR_AUTH0_DOMAIN/
+   CV_BUILDER_OAUTH_AUDIENCE=https://cv.example.com/mcp
+   CV_BUILDER_OAUTH_JWKS_URL=https://YOUR_AUTH0_DOMAIN/.well-known/jwks.json
+   CV_BUILDER_OAUTH_ALLOWED_SUBJECTS=auth0|OWNER_USER_ID
    ```
+
+   For a staged rollout, the OAuth variables may remain empty during the first deployment. Existing
+   browser and static-token access continues working, but ChatGPT mobile remains unavailable until
+   all OAuth variables are configured together and the service is redeployed.
 
 4. Assign `https://cv.example.com:8080` to the `cv-builder` service. The `:8080` suffix tells
    Coolify which internal container port to proxy; the public URL still uses normal HTTPS.
@@ -100,10 +111,10 @@ proxy, domain routing, and HTTPS.
 The Compose stack limits the app to 512 MB RAM and PostgreSQL to 1 GB. Those are safety ceilings,
 not expected steady usage. The Node and PostgreSQL images support both AMD64 and ARM64 hosts.
 
-The current authentication model is one private workspace per deployment. For two people with
-strictly isolated CVs, deploy this same repository twice with different domains, access tokens,
-and stack volumes. Do not reuse either secret. Configure database backups outside the VPS before
-treating a deployment as the only copy of a CV.
+The authentication and storage model is one private workspace per deployment. For Maxim and
+Valeria, deploy this repository twice with distinct domains, OAuth audiences/subjects, access
+tokens, PostgreSQL passwords, and stack volumes. Follow the linked backup, Auth0, installation,
+test, recovery, and rollback runbook before enabling mobile access.
 
 ## Put it on a VPS with HTTPS
 
@@ -130,7 +141,7 @@ Every agent belonging to one workspace uses that deployment's MCP URL and bearer
 agents can use the API instead. Agents for another person should use that person's separate
 deployment and token.
 
-### Codex and the ChatGPT desktop app
+### Local Codex and legacy desktop agents
 
 Export the token in the environment that launches Codex/ChatGPT:
 
@@ -146,8 +157,15 @@ url = "https://YOUR_DOMAIN/mcp"
 bearer_token_env_var = "CV_BUILDER_TOKEN"
 ```
 
-The ChatGPT desktop app, Codex CLI, and Codex IDE extension on the same host share this MCP
-configuration. Restart the client after adding it.
+Codex CLI/IDE and compatible local desktop agents can keep using this migration path. Restart the
+client after adding it. Hosted ChatGPT plugins should use OAuth instead.
+
+### ChatGPT web, Desktop, iOS, and Android
+
+Use the hosted OAuth connection and private plugin package described in
+[`docs/mobile-plugin-deployment.md`](docs/mobile-plugin-deployment.md). ChatGPT authenticates in a
+browser with Authorization Code + PKCE and then calls the hosted `/mcp` URL directly; no Mac or
+manually copied API token is involved after installation.
 
 ### Hermes, Claude, and other MCP clients
 
@@ -156,10 +174,15 @@ Add a Streamable HTTP MCP server with:
 - URL: `https://YOUR_DOMAIN/mcp`
 - Header: `Authorization: Bearer YOUR_TOKEN`
 
-If a client does not support bearer-authenticated remote MCP, use the REST API or an MCP proxy
-that can add the header. ChatGPT web/Work plugins require OAuth discovery for private user data;
-the built-in static token is intended for personal desktop agents and server-side agents, not a
-public multi-user plugin marketplace.
+Hermes supports the hosted OAuth path directly:
+
+```sh
+hermes mcp add --url https://YOUR_DOMAIN/mcp --auth oauth cv-builder
+hermes mcp test cv-builder
+```
+
+The built-in static token remains intended for personal desktop/server-side agents and browser
+login, not ChatGPT mobile.
 
 ## Agent workflow
 
@@ -199,6 +222,15 @@ The complete machine-readable operation list is at `/api/v1/openapi.json`.
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `CV_BUILDER_API_TOKEN` | unset | Protects the UI session, REST API, and MCP endpoint. Required for remote use; minimum 6 characters. A long random token remains strongly recommended. |
+| `CV_BUILDER_OAUTH_ISSUER` | unset | Exact trusted authorization-server issuer. |
+| `CV_BUILDER_OAUTH_AUDIENCE` | `<public URL>/mcp` | Exact resource/audience required in OAuth access tokens. |
+| `CV_BUILDER_OAUTH_JWKS_URL` | unset | HTTPS JWKS used to verify OAuth JWT signatures. |
+| `CV_BUILDER_OAUTH_ALLOWED_SUBJECTS` | unset | Comma-separated immutable OAuth `sub` values allowed in this deployment. Use one owner in production. |
+| `CV_BUILDER_OAUTH_ALGORITHMS` | `RS256` | Comma-separated JWT signature algorithm allowlist. |
+| `CV_BUILDER_OAUTH_MAX_TOKEN_LIFETIME_SECONDS` | `600` | Reject OAuth tokens whose `exp - iat` exceeds this short-lived-token ceiling. |
+| `CV_BUILDER_OAUTH_REVOKED_TOKEN_IDS` | unset | Emergency comma-separated JWT `jti` denylist. |
+| `CV_BUILDER_OAUTH_REVOKED_BEFORE` | unset | Emergency Unix timestamp invalidating tokens issued at or before it. |
+| `CV_BUILDER_OAUTH_INTROSPECTION_*` | unset | Optional RFC 7662 endpoint and server-side credentials; configure all three together. |
 | `DATABASE_URL` | `sqlite:./data/cv-builder.sqlite` | SQLite path or PostgreSQL connection URL. |
 | `CV_BUILDER_PUBLIC_URL` | local server URL | Canonical HTTPS origin used in MCP download links. |
 | `CV_BUILDER_SEED_FILE` | unset | Optional initial Markdown document used only when the database is empty. |
@@ -232,9 +264,10 @@ npm run build
 npm run verify:pdf
 ```
 
-Tests cover parsing, storage, authenticated sessions, CRUD and revision conflicts, server PDF
-downloads, a real Streamable HTTP MCP client handshake, PDF geometry, text, links, and content-
-driven pagination in both directions.
+Tests cover OAuth discovery; signature, issuer, audience, expiry, subject, revocation, and scope
+enforcement; authenticated sessions; CRUD and revision conflicts; every CV MCP tool; server and MCP
+PDF export; a real Streamable HTTP MCP handshake; PDF geometry, text, links, and content-driven
+pagination in both directions.
 
 ## License
 

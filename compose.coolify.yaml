@@ -8,6 +8,20 @@ services:
     environment:
       CV_BUILDER_API_TOKEN: "${CV_BUILDER_API_TOKEN:?Set a long random access token in Coolify}"
       CV_BUILDER_PUBLIC_URL: "${CV_BUILDER_PUBLIC_URL:?Set the public HTTPS URL in Coolify}"
+      # OAuth is optional during a staged rollout so an automatic Coolify deploy
+      # preserves existing browser/static-token access before Auth0 is configured.
+      # Set issuer, audience, JWKS URL, and allowed subject together to enable it.
+      CV_BUILDER_OAUTH_ISSUER: "${CV_BUILDER_OAUTH_ISSUER:-}"
+      CV_BUILDER_OAUTH_AUDIENCE: "${CV_BUILDER_OAUTH_AUDIENCE:-}"
+      CV_BUILDER_OAUTH_JWKS_URL: "${CV_BUILDER_OAUTH_JWKS_URL:-}"
+      CV_BUILDER_OAUTH_ALLOWED_SUBJECTS: "${CV_BUILDER_OAUTH_ALLOWED_SUBJECTS:-}"
+      CV_BUILDER_OAUTH_ALGORITHMS: "${CV_BUILDER_OAUTH_ALGORITHMS:-RS256}"
+      CV_BUILDER_OAUTH_MAX_TOKEN_LIFETIME_SECONDS: "${CV_BUILDER_OAUTH_MAX_TOKEN_LIFETIME_SECONDS:-600}"
+      CV_BUILDER_OAUTH_REVOKED_TOKEN_IDS: "${CV_BUILDER_OAUTH_REVOKED_TOKEN_IDS:-}"
+      CV_BUILDER_OAUTH_REVOKED_BEFORE: "${CV_BUILDER_OAUTH_REVOKED_BEFORE:-}"
+      CV_BUILDER_OAUTH_INTROSPECTION_URL: "${CV_BUILDER_OAUTH_INTROSPECTION_URL:-}"
+      CV_BUILDER_OAUTH_INTROSPECTION_CLIENT_ID: "${CV_BUILDER_OAUTH_INTROSPECTION_CLIENT_ID:-}"
+      CV_BUILDER_OAUTH_INTROSPECTION_CLIENT_SECRET: "${CV_BUILDER_OAUTH_INTROSPECTION_CLIENT_SECRET:-}"
       CV_BUILDER_SEED_FILE: "none"
       DATABASE_URL: "postgresql://cv_builder:${POSTGRES_PASSWORD:?Set a long random database password in Coolify}@postgres:5432/cv_builder"
     depends_on:

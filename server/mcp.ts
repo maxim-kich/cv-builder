@@ -5,6 +5,13 @@ import { outputFilename, parseResumeMarkdown, resumeToMarkdown } from "../src/pa
 import { renderResumeToBuffer } from "../src/pdf/generate";
 import { resumeDataSchema } from "./schemas";
 import type { CvStorage } from "./storage";
+import {
+  CV_SCOPES,
+  missingScopes,
+  oauthChallenge,
+  oauthSecurityMetadata,
+} from "./auth";
+import type { AuthInfo } from "@modelcontextprotocol/sdk/server/auth/types.js";
 
 function json(value: unknown) {
   return { content: [{ type: "text" as const, text: JSON.stringify(value, null, 2) }] };
@@ -14,7 +21,24 @@ function notFound(id: string) {
   return { isError: true, content: [{ type: "text" as const, text: `CV ${id} was not found.` }] };
 }
 
-export function createMcpServer(storage: CvStorage, publicUrl: string): McpServer {
+function requireScopes(
+  authInfo: AuthInfo | undefined,
+  scopes: readonly string[],
+  resourceMetadataUrl: string,
+) {
+  const missing = authInfo ? missingScopes(authInfo, scopes) : [...scopes];
+  if (missing.length === 0) return undefined;
+  const description = `Authorization required. Missing scope: ${missing.join(" ")}.`;
+  return {
+    isError: true,
+    content: [{ type: "text" as const, text: description }],
+    _meta: {
+      "mcp/www_authenticate": [oauthChallenge(resourceMetadataUrl, "insufficient_scope", description, scopes)],
+    },
+  };
+}
+
+export function createMcpServer(storage: CvStorage, publicUrl: string, resourceMetadataUrl: string): McpServer {
   const server = new McpServer({ name: "cv-builder", version: "1.0.0" }, {
     instructions: "Use these tools to create, edit, inspect, and export persistent CVs. Read a CV before updating it and pass expectedRevision when coordinating with other agents.",
   });
@@ -24,7 +48,10 @@ export function createMcpServer(storage: CvStorage, publicUrl: string): McpServe
     description: "List saved CVs with their IDs, names, timestamps, and revisions.",
     inputSchema: {},
     annotations: { readOnlyHint: true, openWorldHint: false },
-  }, async () => {
+    _meta: oauthSecurityMetadata([CV_SCOPES.read]),
+  }, async (_args, extra) => {
+    const denied = requireScopes(extra.authInfo, [CV_SCOPES.read], resourceMetadataUrl);
+    if (denied) return denied;
     const cvs = await storage.list();
     return json(cvs.map(({ resume, ...metadata }) => ({ ...metadata, candidate: resume.name, role: resume.professionalTitle })));
   });
@@ -34,22 +61,28 @@ export function createMcpServer(storage: CvStorage, publicUrl: string): McpServe
     description: "Get all structured fields and generated Markdown for one CV.",
     inputSchema: { id: z.string().min(1).describe("CV ID from list_cvs") },
     annotations: { readOnlyHint: true, openWorldHint: false },
-  }, async ({ id }) => {
+    _meta: oauthSecurityMetadata([CV_SCOPES.read]),
+  }, async ({ id }, extra) => {
+    const denied = requireScopes(extra.authInfo, [CV_SCOPES.read], resourceMetadataUrl);
+    if (denied) return denied;
     const cv = await storage.get(id);
     return cv ? json({ ...cv, markdown: resumeToMarkdown(cv.resume) }) : notFound(id);
   });
 
   server.registerTool("create_cv", {
     title: "Create CV",
-    description: "Create and name a persistent CV. Supply CV Builder Markdown or a structured ResumeData object; omit both for a blank CV.",
+    description: "Create and name a persistent CV after the user explicitly approves the write. Supply CV Builder Markdown or a structured ResumeData object; omit both for a blank CV.",
     inputSchema: {
       title: z.string().min(1).max(200),
       markdown: z.string().max(500_000).optional(),
       resume: z.record(z.string(), z.unknown()).optional(),
       hideLanguageDots: z.boolean().default(false),
     },
-    annotations: { destructiveHint: false, idempotentHint: false, openWorldHint: false },
-  }, async ({ title, markdown, resume, hideLanguageDots }) => {
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    _meta: oauthSecurityMetadata([CV_SCOPES.write]),
+  }, async ({ title, markdown, resume, hideLanguageDots }, extra) => {
+    const denied = requireScopes(extra.authInfo, [CV_SCOPES.write], resourceMetadataUrl);
+    if (denied) return denied;
     if (markdown && resume) return { isError: true, content: [{ type: "text", text: "Provide either markdown or resume, not both." }] };
     const parsedResume = markdown
       ? parseResumeMarkdown(markdown)
@@ -61,7 +94,7 @@ export function createMcpServer(storage: CvStorage, publicUrl: string): McpServe
 
   server.registerTool("update_cv", {
     title: "Update CV",
-    description: "Update a CV name, structured fields, Markdown content, or language-dot display. Pass expectedRevision to avoid overwriting another agent's edit.",
+    description: "Update a CV only after the user explicitly approves the write. Pass expectedRevision to avoid overwriting another agent's edit.",
     inputSchema: {
       id: z.string().min(1),
       title: z.string().min(1).max(200).optional(),
@@ -70,8 +103,11 @@ export function createMcpServer(storage: CvStorage, publicUrl: string): McpServe
       hideLanguageDots: z.boolean().optional(),
       expectedRevision: z.number().int().positive().optional(),
     },
-    annotations: { destructiveHint: false, idempotentHint: false, openWorldHint: false },
-  }, async ({ id, title, markdown, resume, hideLanguageDots, expectedRevision }) => {
+    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
+    _meta: oauthSecurityMetadata([CV_SCOPES.write]),
+  }, async ({ id, title, markdown, resume, hideLanguageDots, expectedRevision }, extra) => {
+    const denied = requireScopes(extra.authInfo, [CV_SCOPES.write], resourceMetadataUrl);
+    if (denied) return denied;
     if (markdown && resume) return { isError: true, content: [{ type: "text", text: "Provide either markdown or resume, not both." }] };
     const result = await storage.update(id, {
       title,
@@ -86,10 +122,15 @@ export function createMcpServer(storage: CvStorage, publicUrl: string): McpServe
 
   server.registerTool("delete_cv", {
     title: "Delete CV",
-    description: "Permanently delete one CV.",
+    description: "Permanently delete one CV only after the user explicitly confirms the irreversible action.",
     inputSchema: { id: z.string().min(1) },
-    annotations: { destructiveHint: true, idempotentHint: true, openWorldHint: false },
-  }, async ({ id }) => json({ deleted: await storage.delete(id), id }));
+    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
+    _meta: oauthSecurityMetadata([CV_SCOPES.delete]),
+  }, async ({ id }, extra) => {
+    const denied = requireScopes(extra.authInfo, [CV_SCOPES.delete], resourceMetadataUrl);
+    if (denied) return denied;
+    return json({ deleted: await storage.delete(id), id });
+  });
 
   server.registerTool("export_cv", {
     title: "Export CV",
@@ -99,7 +140,10 @@ export function createMcpServer(storage: CvStorage, publicUrl: string): McpServe
       format: z.enum(["pdf", "markdown"]).default("pdf"),
     },
     annotations: { readOnlyHint: true, openWorldHint: false },
-  }, async ({ id, format }) => {
+    _meta: oauthSecurityMetadata([CV_SCOPES.export]),
+  }, async ({ id, format }, extra) => {
+    const denied = requireScopes(extra.authInfo, [CV_SCOPES.export], resourceMetadataUrl);
+    if (denied) return denied;
     const cv = await storage.get(id);
     if (!cv) return notFound(id);
     const filename = format === "pdf" ? outputFilename(cv.resume) : `${cv.title.replace(/[^a-z0-9_-]+/gi, "-")}.md`;

@@ -13,3 +13,4 @@ tmp/
 graphify-out/
 *.tsbuildinfo
 *.app/
+plugins/*/.app.json

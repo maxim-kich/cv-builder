@@ -1,0 +1,29 @@
+{
+  "name": "cv-builder-private",
+  "version": "0.1.0",
+  "description": "Securely read, tailor, export, and manage CVs in one private CV Builder deployment.",
+  "author": {
+    "name": "CV Builder operator",
+    "url": "https://cv-builder.maximkich.com"
+  },
+  "homepage": "https://cv-builder.maximkich.com/docs/chatgpt-plugin",
+  "license": "MIT",
+  "keywords": ["cv", "resume", "pdf", "mcp", "oauth"],
+  "interface": {
+    "displayName": "CV Builder Private",
+    "shortDescription": "Manage CVs in your private deployment.",
+    "longDescription": "List and read saved CVs, create or update tailored versions with confirmation, export PDFs, and delete CVs only after explicit approval. OAuth access is isolated to one deployment owner.",
+    "developerName": "CV Builder operator",
+    "category": "Productivity",
+    "capabilities": ["Read", "Write", "Export"],
+    "websiteURL": "https://cv-builder.maximkich.com",
+    "privacyPolicyURL": "https://cv-builder.maximkich.com/privacy",
+    "termsOfServiceURL": "https://cv-builder.maximkich.com/terms",
+    "defaultPrompt": [
+      "List my saved CVs and summarize their target roles.",
+      "Create a tailored CV after showing me the planned changes.",
+      "Export my selected CV as a PDF."
+    ],
+    "brandColor": "#244A3D"
+  }
+}
