@@ -62,8 +62,10 @@ administrative boundary.
 2. Make the chosen database/social login connection a domain-level connection so approved
    third-party MCP clients can use it.
 3. Create two Auth0 APIs (resource servers), using the exact HTTPS audiences in the table above.
-   Use RS256 and the `rfc9068_profile_authz` token dialect so granted permissions appear in the
-   access token. Set access-token lifetime to 300 seconds (at most 600 seconds).
+   Use RS256 and the `rfc9068_profile` token dialect. Set both access-token lifetime fields to 300
+   seconds. On Auth0 Free, leave RBAC disabled: the requested scopes remain in the token and CV
+   Builder enforces them on every request. Paid tenants may instead use RBAC with
+   `rfc9068_profile_authz`, provided the owner is assigned all required API permissions.
 4. Add these permissions to both APIs:
 
    | Scope | Allows |
@@ -73,9 +75,12 @@ administrative boundary.
    | `cvs:export` | Export Markdown or PDF |
    | `cvs:delete` | Permanently delete a CV |
 
-5. Create a Maxim role for Maxim's API and a Valeria role for Valeria's API. Grant each role the
-   four permissions for only its API, then assign each role to only its owner.
-6. Look up each Auth0 user's immutable `user_id` (for example, `auth0|abc...`). This exact value is
+5. Import ChatGPT from `https://chatgpt.com/oauth/client.json`, keep it third-party, and give it a
+   user-delegated per-app client grant containing exactly the four scopes above for each API. Do
+   not grant ChatGPT client-credentials or machine access. This explicit client grant is required
+   even when RBAC is disabled.
+6. Create each owner as a separate Auth0 user and look up the immutable `user_id` (for example,
+   `auth0|abc...`). This exact value is
    the deployment's `CV_BUILDER_OAUTH_ALLOWED_SUBJECTS`; do not use an email address.
 7. Enable refresh-token rotation and reuse detection for third-party clients. Do not create or put
    an OAuth client secret in this repository or in ChatGPT.
@@ -124,7 +129,7 @@ CV_BUILDER_OAUTH_AUDIENCE=https://cv-builder.maximkich.com/mcp
 CV_BUILDER_OAUTH_JWKS_URL=https://YOUR_AUTH0_DOMAIN/.well-known/jwks.json
 CV_BUILDER_OAUTH_ALLOWED_SUBJECTS=auth0|MAXIM_USER_ID
 CV_BUILDER_OAUTH_ALGORITHMS=RS256
-CV_BUILDER_OAUTH_MAX_TOKEN_LIFETIME_SECONDS=600
+CV_BUILDER_OAUTH_MAX_TOKEN_LIFETIME_SECONDS=300
 ```
 
 For Valeria, replace both URLs, the allowed subject, API token, and PostgreSQL password. Keep these
