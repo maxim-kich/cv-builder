@@ -1,0 +1,4 @@
+{$CV_BUILDER_DOMAIN} {
+  encode zstd gzip
+  reverse_proxy cv-builder:8080
+}

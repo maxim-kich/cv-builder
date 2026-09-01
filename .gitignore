@@ -1,0 +1,15 @@
+node_modules/
+dist/
+dist-server/
+data/
+.env
+USER_UPLOADS/
+output/
+outputs/*
+!outputs/.gitkeep
+.codex/hooks.json
+tmp/
+.DS_Store
+graphify-out/
+*.tsbuildinfo
+*.app/

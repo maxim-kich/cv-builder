@@ -1,0 +1,15 @@
+services:
+  cv-builder:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${CV_BUILDER_PORT:-5173}:8080"
+    environment:
+      CV_BUILDER_API_TOKEN: "${CV_BUILDER_API_TOKEN:?Set CV_BUILDER_API_TOKEN in .env}"
+      CV_BUILDER_PUBLIC_URL: "${CV_BUILDER_PUBLIC_URL:-http://localhost:5173}"
+      DATABASE_URL: "sqlite:/app/data/cv-builder.sqlite"
+    volumes:
+      - cv_builder_data:/app/data
+
+volumes:
+  cv_builder_data:

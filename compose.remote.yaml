@@ -1,0 +1,25 @@
+services:
+  cv-builder:
+    environment:
+      CV_BUILDER_PUBLIC_URL: "https://${CV_BUILDER_DOMAIN:?Set CV_BUILDER_DOMAIN in .env}"
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      cv-builder:
+        condition: service_healthy
+    environment:
+      CV_BUILDER_DOMAIN: "${CV_BUILDER_DOMAIN:?Set CV_BUILDER_DOMAIN in .env}"
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - cv_builder_caddy_data:/data
+      - cv_builder_caddy_config:/config
+
+volumes:
+  cv_builder_caddy_data:
+  cv_builder_caddy_config:

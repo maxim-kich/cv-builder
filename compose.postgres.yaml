@@ -1,0 +1,25 @@
+services:
+  cv-builder:
+    environment:
+      DATABASE_URL: "postgresql://cv_builder:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/cv_builder"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: cv_builder
+      POSTGRES_USER: cv_builder
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}"
+    volumes:
+      - cv_builder_postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cv_builder -d cv_builder"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  cv_builder_postgres:

@@ -1,0 +1,14 @@
+node_modules
+dist
+dist-server
+data
+USER_UPLOADS
+tmp
+outputs
+output
+graphify-out
+.git
+.env
+.codex
+*.app
+.DS_Store
