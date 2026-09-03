@@ -349,7 +349,7 @@ function CvGallery({ documents, downloadingId, onCreate, onOpen, onDownload, onD
 }) {
   const dateFormatter = useMemo(() => new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }), []);
   return <section className="gallery-shell" aria-labelledby="gallery-title">
-    <header className="gallery-heading"><h2 id="gallery-title">CVs</h2><button type="button" className="secondary-button create-button" onClick={onCreate}>Create new</button></header>
+    <header className="gallery-heading"><h2 id="gallery-title">List</h2><button type="button" className="secondary-button create-button" onClick={onCreate}>Create new</button></header>
     {documents.length ? <div className="cv-list">{documents.map((cv) => <article key={cv.id} className="cv-list-row" tabIndex={0} role="button" aria-label={`Edit ${cv.title || "Untitled"}`} onClick={() => onOpen(cv.id)} onKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); onOpen(cv.id); } }}>
       <div className="cv-list-copy"><h3>{cv.title || "Untitled"}</h3><p>Edited {dateFormatter.format(new Date(cv.updatedAt))}</p></div>
       <div className="cv-list-actions">
