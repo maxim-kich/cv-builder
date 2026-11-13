@@ -1,3 +1,4 @@
+import type { CvTemplate } from "../src/templates";
 import { mkdir } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -9,12 +10,14 @@ export interface CreateCvInput {
   title: string;
   resume: ResumeData;
   hideLanguageDots: boolean;
+  template?: CvTemplate;
 }
 
 export interface UpdateCvInput {
   title?: string;
   resume?: ResumeData;
   hideLanguageDots?: boolean;
+  template?: CvTemplate | null;
   expectedRevision?: number;
 }
 
@@ -31,6 +34,10 @@ export interface CvStorage {
   create(input: CreateCvInput): Promise<CvDocument>;
   update(id: string, input: UpdateCvInput): Promise<UpdateCvResult>;
   delete(id: string): Promise<boolean>;
+  listTemplates(owner: string): Promise<CvTemplate[]>;
+  getTemplate(owner: string, id: string): Promise<CvTemplate | null>;
+  createTemplate(owner: string, input: Pick<CvTemplate, "title" | "source" | "fonts">): Promise<CvTemplate>;
+  deleteTemplate(owner: string, id: string, expectedRevision: number): Promise<boolean>;
   close(): Promise<void>;
 }
 
@@ -42,6 +49,7 @@ interface CvRow {
   created_at: string | Date;
   updated_at: string | Date;
   revision: number;
+  template?: string | CvTemplate | null;
 }
 
 function createId(): string {
@@ -61,6 +69,7 @@ function rowToCv(row: CvRow): CvDocument {
     createdAt: toIso(row.created_at),
     updatedAt: toIso(row.updated_at),
     revision: Number(row.revision),
+    ...(row.template ? { template: typeof row.template === "string" ? JSON.parse(row.template) : row.template } : {}),
   };
 }
 
@@ -86,6 +95,8 @@ class SqliteStorage implements CvStorage {
       );
       CREATE INDEX IF NOT EXISTS cvs_updated_at_idx ON cvs(updated_at DESC);
     `);
+    if (!(this.database.prepare("PRAGMA table_info(cvs)").all() as { name: string }[]).some(c => c.name === "template")) this.database.exec("ALTER TABLE cvs ADD COLUMN template TEXT");
+    this.database.exec("CREATE TABLE IF NOT EXISTS templates (id TEXT PRIMARY KEY, owner TEXT NOT NULL, document TEXT NOT NULL, revision INTEGER NOT NULL)");
   }
 
   private db(): DatabaseSync {
@@ -106,9 +117,9 @@ class SqliteStorage implements CvStorage {
     const now = new Date().toISOString();
     const cv: CvDocument = { id: createId(), ...input, createdAt: now, updatedAt: now, revision: 1 };
     this.db().prepare(`
-      INSERT INTO cvs (id, title, resume, hide_language_dots, created_at, updated_at, revision)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(cv.id, cv.title, JSON.stringify(cv.resume), cv.hideLanguageDots ? 1 : 0, now, now, cv.revision);
+      INSERT INTO cvs (id, title, resume, hide_language_dots, created_at, updated_at, revision, template)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(cv.id, cv.title, JSON.stringify(cv.resume), cv.hideLanguageDots ? 1 : 0, now, now, cv.revision, cv.template ? JSON.stringify(cv.template) : null);
     return cv;
   }
 
@@ -118,6 +129,7 @@ class SqliteStorage implements CvStorage {
     if (input.expectedRevision && input.expectedRevision !== current.revision) return { status: "conflict", cv: current };
     const next: CvDocument = {
       ...current,
+      template: input.template === null ? undefined : input.template ?? current.template,
       title: input.title ?? current.title,
       resume: input.resume ?? current.resume,
       hideLanguageDots: input.hideLanguageDots ?? current.hideLanguageDots,
@@ -125,9 +137,9 @@ class SqliteStorage implements CvStorage {
       revision: current.revision + 1,
     };
     const result = this.db().prepare(`
-      UPDATE cvs SET title = ?, resume = ?, hide_language_dots = ?, updated_at = ?, revision = ?
+      UPDATE cvs SET title = ?, resume = ?, hide_language_dots = ?, updated_at = ?, revision = ?, template = ?
       WHERE id = ? AND revision = ?
-    `).run(next.title, JSON.stringify(next.resume), next.hideLanguageDots ? 1 : 0, next.updatedAt, next.revision, id, current.revision);
+    `).run(next.title, JSON.stringify(next.resume), next.hideLanguageDots ? 1 : 0, next.updatedAt, next.revision, next.template ? JSON.stringify(next.template) : null, id, current.revision);
     if (Number(result.changes) === 0) {
       const latest = await this.get(id);
       return latest ? { status: "conflict", cv: latest } : { status: "not_found" };
@@ -137,6 +149,24 @@ class SqliteStorage implements CvStorage {
 
   async delete(id: string): Promise<boolean> {
     return Number(this.db().prepare("DELETE FROM cvs WHERE id = ?").run(id).changes) > 0;
+  }
+
+  async listTemplates(owner: string): Promise<CvTemplate[]> {
+    const rows = this.db().prepare("SELECT document FROM templates WHERE owner = ? ORDER BY id").all(owner) as { document: string }[];
+    return rows.map(row => JSON.parse(row.document) as CvTemplate);
+  }
+  async getTemplate(owner: string, id: string): Promise<CvTemplate | null> {
+    const row = this.db().prepare("SELECT document FROM templates WHERE owner = ? AND id = ?").get(owner, id) as { document: string } | undefined;
+    return row ? JSON.parse(row.document) as CvTemplate : null;
+  }
+  async createTemplate(owner: string, input: Pick<CvTemplate, "title" | "source" | "fonts">): Promise<CvTemplate> {
+    const now = new Date().toISOString();
+    const template = { ...input, id: crypto.randomUUID(), revision: 1, createdAt: now, updatedAt: now };
+    this.db().prepare("INSERT INTO templates VALUES (?, ?, ?, ?)").run(template.id, owner, JSON.stringify(template), 1);
+    return template;
+  }
+  async deleteTemplate(owner: string, id: string, expectedRevision: number): Promise<boolean> {
+    return Number(this.db().prepare("DELETE FROM templates WHERE owner = ? AND id = ? AND revision = ?").run(owner, id, expectedRevision).changes) > 0;
   }
 
   async close(): Promise<void> {
@@ -166,6 +196,8 @@ class PostgresStorage implements CvStorage {
       );
       CREATE INDEX IF NOT EXISTS cvs_updated_at_idx ON cvs(updated_at DESC);
     `);
+    await this.pool.query("ALTER TABLE cvs ADD COLUMN IF NOT EXISTS template JSONB");
+    await this.pool.query("CREATE TABLE IF NOT EXISTS templates (id TEXT PRIMARY KEY, owner TEXT NOT NULL, document TEXT NOT NULL, revision INTEGER NOT NULL)");
   }
 
   async list(): Promise<CvDocument[]> {
@@ -182,9 +214,9 @@ class PostgresStorage implements CvStorage {
     const now = new Date().toISOString();
     const cv: CvDocument = { id: createId(), ...input, createdAt: now, updatedAt: now, revision: 1 };
     await this.pool.query(`
-      INSERT INTO cvs (id, title, resume, hide_language_dots, created_at, updated_at, revision)
-      VALUES ($1, $2, $3::jsonb, $4, $5, $5, 1)
-    `, [cv.id, cv.title, JSON.stringify(cv.resume), cv.hideLanguageDots, now]);
+      INSERT INTO cvs (id, title, resume, hide_language_dots, created_at, updated_at, revision, template)
+      VALUES ($1, $2, $3::jsonb, $4, $5, $5, 1, $6::jsonb)
+    `, [cv.id, cv.title, JSON.stringify(cv.resume), cv.hideLanguageDots, now, cv.template ? JSON.stringify(cv.template) : null]);
     return cv;
   }
 
@@ -195,7 +227,7 @@ class PostgresStorage implements CvStorage {
     const now = new Date().toISOString();
     const result = await this.pool.query<CvRow>(`
       UPDATE cvs SET title = $1, resume = $2::jsonb, hide_language_dots = $3,
-        updated_at = $4, revision = revision + 1
+        updated_at = $4, revision = revision + 1, template = $7::jsonb
       WHERE id = $5 AND revision = $6 RETURNING *
     `, [
       input.title ?? current.title,
@@ -204,6 +236,7 @@ class PostgresStorage implements CvStorage {
       now,
       id,
       current.revision,
+      JSON.stringify(input.template === null ? null : input.template ?? current.template ?? null),
     ]);
     if (!result.rows[0]) {
       const latest = await this.get(id);
@@ -215,6 +248,24 @@ class PostgresStorage implements CvStorage {
   async delete(id: string): Promise<boolean> {
     const result = await this.pool.query("DELETE FROM cvs WHERE id = $1", [id]);
     return (result.rowCount ?? 0) > 0;
+  }
+
+  async listTemplates(owner: string): Promise<CvTemplate[]> {
+    const rows = (await this.pool.query<{ document: string }>("SELECT document FROM templates WHERE owner = $1 ORDER BY id", [owner])).rows;
+    return rows.map(row => JSON.parse(row.document) as CvTemplate);
+  }
+  async getTemplate(owner: string, id: string): Promise<CvTemplate | null> {
+    const result = await this.pool.query<{ document: string }>("SELECT document FROM templates WHERE owner = $1 AND id = $2", [owner, id]);
+    return result.rows[0] ? JSON.parse(result.rows[0].document) as CvTemplate : null;
+  }
+  async createTemplate(owner: string, input: Pick<CvTemplate, "title" | "source" | "fonts">): Promise<CvTemplate> {
+    const now = new Date().toISOString();
+    const template = { ...input, id: crypto.randomUUID(), revision: 1, createdAt: now, updatedAt: now };
+    await this.pool.query("INSERT INTO templates VALUES ($1, $2, $3, $4)", [template.id, owner, JSON.stringify(template), 1]);
+    return template;
+  }
+  async deleteTemplate(owner: string, id: string, expectedRevision: number): Promise<boolean> {
+    return (await this.pool.query("DELETE FROM templates WHERE owner = $1 AND id = $2 AND revision = $3", [owner, id, expectedRevision])).rowCount === 1;
   }
 
   async close(): Promise<void> {

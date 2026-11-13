@@ -52,11 +52,11 @@ export function listCvs(): Promise<{ items: CvDocument[] }> {
   return request("/api/v1/cvs");
 }
 
-export function createCv(input: { title: string; resume?: ResumeData; hideLanguageDots?: boolean }): Promise<CvDocument> {
+export function createCv(input: { title: string; resume?: ResumeData; hideLanguageDots?: boolean; templateId?: string; expectedRevision?: number }): Promise<CvDocument> {
   return request("/api/v1/cvs", { method: "POST", body: JSON.stringify(input) });
 }
 
-export function updateCv(id: string, input: { title?: string; resume?: ResumeData; hideLanguageDots?: boolean }): Promise<CvDocument> {
+export function updateCv(id: string, input: { title?: string; resume?: ResumeData; hideLanguageDots?: boolean; templateId?: string; expectedRevision?: number }): Promise<CvDocument> {
   return request(`/api/v1/cvs/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(input) });
 }
 
