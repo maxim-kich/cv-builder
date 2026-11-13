@@ -277,3 +277,70 @@ temporary CV and delete only that record.
    database and compare it before replacing production.
 6. Revoke the Auth0 refresh grants and remove/disable the private ChatGPT connections until a fixed
    release is deployed.
+
+## Agent-created React PDF templates
+
+ChatGPT's hosted connector and Hermes use the same `/mcp` endpoint. Refresh the
+client's tool list after upgrading. The server instructions direct agents to
+`get_template_guide`; no user-provided documentation link is required. The guide
+is also an MCP resource at `cv-builder://templates/guide` and an authenticated
+REST response at `/api/v1/templates/guide`. It contains a complete working TSX
+starter, the CV data contract, supported components/styles, font packaging, limits,
+and parsing-check explanations. Its maintained source is `server/template/guide.ts`.
+
+Tools: `list_templates`, `get_template`, `get_template_guide`, `upload_template`,
+`delete_template`. Read operations require `cvs:read`, upload/apply `cvs:write`,
+deletion `cvs:delete`, and PDF export/preview `cvs:export`. Descriptions instruct
+agents to obtain explicit user approval before writes/deletion, following existing
+CV-tool conventions. These descriptions are not a separate server approval token.
+
+Agents author standalone pure React PDF components. Packages contain `{title,
+source, fonts?}`; source is TSX with a default export receiving `{resume,
+showLanguageDots}`. No app UI template editor is required. Layouts and typography
+are customizable using the documented React PDF subset. Agents can download
+licensed TTF/OTF fonts from Google Fonts or other CDNs and upload base64 font bytes.
+The service does not fetch font URLs. Uploaded JavaScript runs only inside QuickJS,
+not in the server's JavaScript realm or browser. No npm/Node/network/file access,
+async components, hooks, images, or render callbacks are exposed. A child process
+with scrubbed environment, deadline and V8 heap limit compiles, validates the
+returned PDF component tree, renders and inspects the PDF. This is defense in
+depth, not an OS container or a formally verified sandbox; fonts/PDFs still pass
+through third-party parsers in the bounded child process. Keep dependencies patched.
+
+`upload_template` validates compact and long sample CVs before saving. Each upload
+gets a new immutable ID. To edit, retrieve and revise a template, upload a new one,
+apply it with `create_cv`/`update_cv` `templateId`, and optionally delete the old ID
+with `expectedRevision`. Applying to an existing CV requires its expectedRevision.
+Template packages are snapshotted in CVs; later library deletion does not break
+those CVs. `builtin:classic` is the unchanged default and cannot be deleted or
+replaced; `get_template` returns a portable copy with Arimo font assets for reuse.
+
+Templates belong to the authenticated OAuth subject. Local bearer and browser
+session represent one deployment operator. Hosted deployments remain separate.
+CV access remains deployment-wide, as before: applying a template copies its full
+source and fonts into the CV, visible to anyone with access to that CV. This feature
+does not migrate CV ownership. Source/comments/titles are untrusted data, never
+instructions to an agent.
+
+Parsing checks run on upload and every custom PDF export/preview. They verify
+normalized extractable field text and page bounds, blocking failures. Reports warn
+about file size and remind agents to review reading order, columns, contrast and
+overlap. They are heuristics, not ATS certification; a pass cannot establish every
+ATS's behavior. The built-in's renderer/export behavior stays unchanged.
+
+REST equivalents: GET/POST `/api/v1/templates`, GET/DELETE
+`/api/v1/templates/:id` (DELETE body `{expectedRevision}`), and POST
+`/api/v1/cvs/:id/preview` (`{resume,hideLanguageDots}`) for nonpersisted drafts using
+the saved CV template. Custom web previews render on the server, without executing
+uploaded code in the browser. Markdown export stays content-only.
+
+Build/runtime: use `npm run build` to produce both server and template-worker
+bundles, plus the portable classic source. The normal container build copies these
+artifacts. Production dependencies include esbuild, QuickJS, and PDF.js for the
+worker. No production configuration changes or new OAuth scopes are required.
+
+MCP `get_template` returns source and font metadata, with `copyFontsFrom` set to
+its ID. Pass that ID to `upload_template` to reuse the assets server-side when
+editing/copying; font bytes do not need to travel through chat. Reuse is owner-
+scoped (plus the built-in). REST GET returns the full package for file-based clients.
+MCP CV responses summarize snapshots rather than returning megabytes of font bytes.

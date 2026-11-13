@@ -8,6 +8,7 @@ export interface CvDocument {
   revision: number;
   resume: ResumeData;
   hideLanguageDots: boolean;
+  template?: import("./templates").CvTemplate;
 }
 
 function createId(): string {

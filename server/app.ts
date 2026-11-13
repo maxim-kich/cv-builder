@@ -1,3 +1,8 @@
+import { DEFAULT_TEMPLATE_ID } from "../src/templates";
+import { findTemplate, templateOwner } from "./template/catalog";
+import { templateRoutes } from "./template/routes";
+import { TemplateError } from "./template/render";
+import { renderCv } from "./template/export";
 import { access, readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import cookie from "@fastify/cookie";
@@ -8,7 +13,6 @@ import type { AuthInfo } from "@modelcontextprotocol/sdk/server/auth/types.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { createEmptyResume } from "../src/cvStore";
 import { outputFilename, parseResumeMarkdown, resumeToMarkdown } from "../src/parser";
-import { renderResumeToBuffer } from "../src/pdf/generate";
 import type { ResumeData } from "../src/types";
 import type { AppConfig } from "./config";
 import {
@@ -48,6 +52,10 @@ async function loadSeed(seedFile: string | undefined): Promise<ResumeData> {
 
 export async function buildApp({ config, storage, serveFrontend = true, logger = true, oauthVerifier }: BuildAppOptions) {
   const app = Fastify({ logger });
+  app.setErrorHandler((error, _request, reply) => {
+    if (error instanceof TemplateError) return reply.code(422).send({ error: "template_render_failed", message: error.message, report: error.report });
+    return reply.send(error);
+  });
   const resourceMetadataUrl = `${config.publicUrl}/.well-known/oauth-protected-resource/mcp`;
   const verifier = oauthVerifier ?? (config.oauth ? createOAuthTokenVerifier(config.oauth) : undefined);
   const accessContexts = new WeakMap<FastifyRequest, AccessContext>();
@@ -150,6 +158,7 @@ export async function buildApp({ config, storage, serveFrontend = true, logger =
   app.get("/docs/chatgpt-plugin", async (_request, reply) => reply.type("text/html; charset=utf-8").send(`<!doctype html>
 <html lang="en"><meta charset="utf-8"><title>CV Builder MCP</title><body><main><h1>CV Builder MCP</h1>
 <p>Connect an OAuth-capable MCP client to <code>${config.publicUrl}/mcp</code>. Available scopes are <code>${ALL_CV_SCOPES.join(" ")}</code>.</p>
+<p>Use get_template_guide to learn to author custom React PDF templates. list_templates/get_template discover and read; upload_template validates and saves a new package; delete_template removes an uploaded package. Apply templateId with create_cv/update_cv. Approve writes explicitly. Built-in classic never changes.</p>
 <p>Read operations list and inspect CVs; write operations create and update them; export renders Markdown or PDF; delete permanently removes a CV.</p>
 </main></body></html>`));
 
@@ -174,13 +183,17 @@ export async function buildApp({ config, storage, serveFrontend = true, logger =
     return reply.code(204).send();
   });
 
+  const owner = (request: FastifyRequest) => templateOwner(accessContexts.get(request)?.authInfo);
+  templateRoutes(app, storage, authenticate, owner);
   app.get("/api/v1/cvs", { preHandler: authenticate(["cvs:read"]) }, async () => ({ items: await storage.list() }));
 
   app.post("/api/v1/cvs", { preHandler: authenticate(["cvs:write"]) }, async (request, reply) => {
     const parsed = createCvSchema.safeParse(request.body);
     if (!parsed.success) return reply.code(400).send({ error: "invalid_request", details: parsed.error.flatten() });
+    const template = parsed.data.templateId && parsed.data.templateId !== DEFAULT_TEMPLATE_ID ? await findTemplate(storage, owner(request), parsed.data.templateId) : undefined;
+    if (parsed.data.templateId && parsed.data.templateId !== DEFAULT_TEMPLATE_ID && !template) return reply.code(404).send({ error: "template_not_found" });
     const resume = parsed.data.markdown ? parseResumeMarkdown(parsed.data.markdown) : parsed.data.resume ?? createEmptyResume();
-    const cv = await storage.create({ title: parsed.data.title, resume, hideLanguageDots: parsed.data.hideLanguageDots });
+    const cv = await storage.create({ title: parsed.data.title, resume, template: template ?? undefined, hideLanguageDots: parsed.data.hideLanguageDots });
     return reply.code(201).send(cv);
   });
 
@@ -192,7 +205,10 @@ export async function buildApp({ config, storage, serveFrontend = true, logger =
   app.patch<{ Params: { id: string } }>("/api/v1/cvs/:id", { preHandler: authenticate(["cvs:write"]) }, async (request, reply) => {
     const parsed = updateCvSchema.safeParse(request.body);
     if (!parsed.success) return reply.code(400).send({ error: "invalid_request", details: parsed.error.flatten() });
+    const template = parsed.data.templateId && parsed.data.templateId !== DEFAULT_TEMPLATE_ID ? await findTemplate(storage, owner(request), parsed.data.templateId) : undefined;
+    if (parsed.data.templateId && parsed.data.templateId !== DEFAULT_TEMPLATE_ID && !template) return reply.code(404).send({ error: "template_not_found" });
     const result = await storage.update(request.params.id, {
+      template: parsed.data.templateId === DEFAULT_TEMPLATE_ID ? null : template ?? undefined,
       title: parsed.data.title,
       resume: parsed.data.markdown ? parseResumeMarkdown(parsed.data.markdown) : parsed.data.resume,
       hideLanguageDots: parsed.data.hideLanguageDots,
@@ -218,11 +234,11 @@ export async function buildApp({ config, storage, serveFrontend = true, logger =
   app.get<{ Params: { id: string } }>("/api/v1/cvs/:id/pdf", { preHandler: authenticate(["cvs:export"]) }, async (request, reply) => {
     const cv = await storage.get(request.params.id);
     if (!cv) return reply.code(404).send({ error: "not_found" });
-    const pdf = await renderResumeToBuffer(cv.resume, { showLanguageDots: !cv.hideLanguageDots });
+    const pdf = await renderCv(cv);
     return reply.type("application/pdf").header("Content-Disposition", `attachment; filename="${outputFilename(cv.resume)}"`).send(pdf);
   });
 
-  app.all("/mcp", { preHandler: authenticate() }, async (request, reply) => {
+  app.all("/mcp", { bodyLimit: 8_000_000, preHandler: authenticate() }, async (request, reply) => {
     if (request.method !== "POST") {
       return reply.code(405).send({ jsonrpc: "2.0", error: { code: -32000, message: "Method not allowed" }, id: null });
     }

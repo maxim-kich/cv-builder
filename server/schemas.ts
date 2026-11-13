@@ -46,6 +46,7 @@ export const createCvSchema = z.object({
   title: z.string().trim().min(1).max(200).default("Untitled"),
   resume: resumeDataSchema.optional(),
   markdown: z.string().max(500_000).optional(),
+  templateId: z.string().min(1).max(200).optional(),
   hideLanguageDots: z.boolean().default(false),
 }).refine((value) => !(value.resume && value.markdown), {
   message: "Provide either resume or markdown, not both",
@@ -55,9 +56,10 @@ export const updateCvSchema = z.object({
   title: z.string().trim().min(1).max(200).optional(),
   resume: resumeDataSchema.optional(),
   markdown: z.string().max(500_000).optional(),
+  templateId: z.string().min(1).max(200).optional(),
   hideLanguageDots: z.boolean().optional(),
   expectedRevision: z.number().int().positive().optional(),
-}).refine((value) => Object.keys(value).some((key) => key !== "expectedRevision"), {
+}).refine(value => !value.templateId || value.expectedRevision !== undefined, { message: "Applying a template requires expectedRevision" }).refine((value) => Object.keys(value).some((key) => key !== "expectedRevision"), {
   message: "At least one CV field must be provided",
 }).refine((value) => !(value.resume && value.markdown), {
   message: "Provide either resume or markdown, not both",

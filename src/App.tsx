@@ -172,6 +172,30 @@ export default function App() {
   const pdfDocument = useMemo(() => <ResumeDocument resume={debouncedResume} showLanguageDots={!hideLanguageDots} />, [debouncedResume, hideLanguageDots]);
   const [instance, updateInstance] = usePDF({ document: pdfDocument });
   useEffect(() => { updateInstance(pdfDocument); }, [pdfDocument, updateInstance]);
+  const [customPreview, setCustomPreview] = useState<string | null>(null);
+  useEffect(() => {
+    setCustomPreview(null);
+    if (!selectedCv?.template) return;
+    const controller = new AbortController();
+    let url: string | undefined;
+    void fetch(`/api/v1/cvs/${encodeURIComponent(selectedCv.id)}/preview`, {
+      method: "POST", credentials: "same-origin", signal: controller.signal,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ resume: debouncedResume, hideLanguageDots }),
+    }).then(async response => {
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message ?? error.error ?? "Custom template preview failed");
+      }
+      const blob = await response.blob();
+      if (controller.signal.aborted) return;
+      url = URL.createObjectURL(blob);
+      setCustomPreview(url);
+    }).catch(error => {
+      if (!controller.signal.aborted) setLoadError(error instanceof Error ? error.message : "Custom template preview failed");
+    });
+    return () => { controller.abort(); if (url) URL.revokeObjectURL(url); };
+  }, [selectedCv?.id, selectedCv?.template, debouncedResume, hideLanguageDots]);
   const rememberDocuments = (items: CvDocument[]) => {
     for (const cv of items) savedDrafts.current.set(cv.id, JSON.stringify({ title: cv.title, resume: cv.resume, hideLanguageDots: cv.hideLanguageDots }));
   };
@@ -299,7 +323,7 @@ export default function App() {
         <header className="panel-header editor-header"><div className="view-tabs" role="tablist" aria-label="Editor view"><button type="button" role="tab" aria-selected={view === "fields"} onClick={() => setView("fields")}>Fields</button><button type="button" role="tab" aria-selected={view === "markdown"} onClick={() => setView("markdown")}>Markdown</button></div>{view === "markdown" ? <button type="button" className="small-button" onClick={copyMarkdown}>{copied ? "Copied" : "Copy Markdown"}</button> : <span>{resume.employment.length} positions</span>}</header>
         {view === "fields" ? <AppEditor resume={resume} onChange={(next) => updateSelected({ resume: next })} hideLanguageDots={hideLanguageDots} onHideLanguageDotsChange={(hide) => updateSelected({ hideLanguageDots: hide })} /> : <div className="markdown-view"><p>Markdown is generated from the fields and stays read-only.</p><pre>{markdown}</pre></div>}
       </article>
-      <article className="panel preview-panel"><header className="panel-header"><div><h2>Live PDF preview</h2></div><span>{filename}</span></header><PdfPreview url={instance.url} /></article>
+      <article className="panel preview-panel"><header className="panel-header"><div><h2>Live PDF preview</h2></div><span>{filename}</span></header><PdfPreview url={selectedCv?.template ? customPreview : instance.url} /></article>
       </section>
     </> : <CvGallery documents={documents} downloadingId={downloadingId} onCreate={() => void createNew()} onOpen={(id) => { setSelectedId(id); setView("fields"); }} onDownload={downloadCv} onDelete={setDeleteTarget} />}
     {deleteTarget ? <DeleteCvModal cv={deleteTarget} onCancel={() => setDeleteTarget(null)} onConfirm={() => {
