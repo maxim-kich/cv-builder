@@ -26,8 +26,18 @@ export function templateRoutes(app: FastifyInstance, storage: CvStorage, authent
   app.post<{ Params: { id: string } }>("/api/v1/cvs/:id/preview", { bodyLimit: 1_000_000, preHandler: authenticate(["cvs:export"]) }, async (request, reply) => {
     const parsed = z.object({ resume: resumeDataSchema, hideLanguageDots: z.boolean() }).strict().safeParse(request.body);
     if (!parsed.success) return reply.code(400).send({ error: "invalid_request" });
-    const cv = await storage.get(request.params.id);
-    if (!cv) return reply.code(404).send({ error: "not_found" });
-    return reply.type("application/pdf").header("Cache-Control", "no-store").send(await renderCv({ ...cv, ...parsed.data }));
+    const controller = new AbortController();
+    const disconnected = () => { if (!reply.raw.writableFinished) controller.abort(); };
+    reply.raw.on("close", disconnected);
+    request.raw.on("aborted", disconnected);
+    try {
+      const cv = await storage.get(request.params.id);
+      if (!cv) return reply.code(404).send({ error: "not_found" });
+      const pdf = await renderCv({ ...cv, ...parsed.data }, controller.signal);
+      return reply.type("application/pdf").header("Cache-Control", "no-store").send(pdf);
+    } finally {
+      reply.raw.off("close", disconnected);
+      request.raw.off("aborted", disconnected);
+    }
   });
 }

@@ -34,7 +34,7 @@ cap. This is not an OS container or a formal security audit of parser dependenci
 
 ## Verification
 
-- `npm test`: 40 tests passed (8 files), including authenticated MCP lifecycle,
+- `npm test`: 45 tests passed (11 files), including authenticated MCP lifecycle,
   owner boundaries, immutable default copy with real bundled fonts, compact/long
   validation, deletion with surviving CV snapshots, revision conflicts, draft
   preview without persistence, legacy SQLite migration, missing-text rejection,
@@ -61,3 +61,13 @@ cap. This is not an OS container or a formal security audit of parser dependenci
 - Existing npm audit reports 19 dependency advisories; no broad dependency upgrade
   was included. Existing Vite large-chunk warning remains.
 - No push, deployment, production configuration change or production data access.
+
+## Review fixes
+
+- Editor download and preview now share the checked PDF URL. Download is disabled
+  immediately when custom draft content changes, until that exact draft renders.
+- Aborting a preview cancels its queued job or kills its worker. Slots are reused
+  only after process exit. A bounded FIFO queue handles transient capacity.
+- Regression coverage includes mounted editor controls (custom/default), stale
+  draft gating, worker cancellation/slot handoff, and two aborted real HTTP
+  requests followed by a successful final-draft preview.

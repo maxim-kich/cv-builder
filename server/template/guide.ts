@@ -110,7 +110,9 @@ is responsible for design review in addition to the app's automatic checks.
 The immutable built-in retains its original export behavior for compatibility.
 
 Limits: guest CPU ~1s, guest heap 24 MB, tree 10,000 nodes/50 levels, PDF 30 pages /
-10 MB, worker deadline 20s, max 2 concurrent renders per process. Retry busy errors.
+10 MB, worker deadline 20s, max 2 concurrent renders per process with a bounded
+FIFO wait queue. Obsolete preview requests cancel queued/running work; capacity is
+released after the worker exits. Retry only if the queue is full.
 No uploaded code runs in the app/browser; a child process with scrubbed environment
 compiles it, evaluates it in QuickJS, validates its output, and renders PDF.
 
